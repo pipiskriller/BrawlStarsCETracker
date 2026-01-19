@@ -68,9 +68,92 @@ namespace EventTrackerWPF.Librarbies
             }
         }
 
-        public static EventData FetchData()
+        public static async Task<EventData> FetchData()
         {
-            return MockData.Data;
+            EventData Data = new EventData();
+            using (var Client = new HttpClient() { Timeout = TimeSpan.FromSeconds(6.7)})
+            {
+                var Response = await Client.GetAsync(BrawlFeedLinks.NewsAPI);
+                Data.HTTPStatusCode = (int)Response.StatusCode;
+
+                if (Response.IsSuccessStatusCode)
+                {
+                    string JSONContent = await Response.Content.ReadAsStringAsync();
+                    if (!string.IsNullOrWhiteSpace(JSONContent))
+                    {
+                        var Content = JsonDocument.Parse(JSONContent);
+
+
+                        var EventListLength = Content.RootElement
+                                        .GetProperty("events").GetArrayLength();
+
+                        for (int Attempt = 0; Attempt < EventListLength; Attempt++)
+                        {
+                            var EventData = Content.RootElement
+                                                   .GetProperty("events")[Attempt];
+
+                            if (EventData.TryGetProperty("milestones", out JsonElement EventMilestones))
+                            {
+                                int MilestoneCount = EventMilestones.GetArrayLength();
+
+                                Data.EventID = EventData.GetProperty("id").GetString() ?? "unknown-" + Random.Shared.Next(0, 100000);
+                                Data.Progress = EventData.GetProperty("tracker").GetProperty("progress").GetDouble();
+                                Data.ProgressInMillions = EventData.GetProperty("tracker").GetProperty("rawProgressInMillions").GetDouble();
+
+                                string EventTitleFull = EventData.GetProperty("title").GetString() ?? string.Empty;
+                                Data.EventTitle = EventTitleFull.Split('-')[0].Trim();
+                                Data.EventDesc = "<c9ef700>" + EventTitleFull.Split('-')[1].Trim() + "</c>";
+
+                                if (EventData.TryGetProperty("relatedMedia", out JsonElement RelatedMedia))
+                                {
+                                    int RelatedMediaCount = RelatedMedia.GetArrayLength();
+
+                                    for (int Idx = 0; Idx < RelatedMediaCount; Idx++)
+                                    {
+                                        if (RelatedMedia[Idx].GetProperty("title").GetString() == "icon")
+                                        {
+                                            string ImgSrc = RelatedMedia[Idx]
+                                                    .GetProperty("image")
+                                                    .GetProperty("url").GetString() ?? string.Empty;
+                                            if (!string.IsNullOrWhiteSpace(ImgSrc))
+                                                Data.ImgSrc = ImgSrc.Split('?')[0];
+
+                                        }
+                                    }
+                                }
+
+                                for (int Idx = 0; Idx < MilestoneCount; Idx++)
+                                {
+                                    EventMilestone M = new EventMilestone()
+                                    {
+                                        ProgressPercent = EventMilestones[Idx].GetProperty("progress").GetDouble(),
+                                        CountLabel = EventMilestones[Idx].GetProperty("label").GetString() ?? string.Empty
+                                    };
+
+                                    Data.Milestones.Add(M);
+                                }
+                                Data.FetchStatus = FetchResponse.Success;
+                                break;
+                            }
+                            else Data.FetchStatus = FetchResponse.NotAvailable;
+                        }
+                    }
+                }
+                else
+                {
+                    var Message = new AlertMessage()
+                    {
+                        Title = LocalizationLib.Strings["TID_ERROR_FETCHDATA_TITLE"],
+                        Description = LocalizationLib.Strings["TID_ERROR_FETCHDATA_HTTP_DESC"].Replace("<STATUS_CODE>", Response.StatusCode.ToString()),
+
+                        BlueButton = LocalizationLib.Strings["TID_OK"],
+                        BlueButtonFunc = (S, e) => { MainWindow.SoundIndexer.PlaySoundID("btn_click"); }
+                    };
+
+                    Data.FetchStatus = FetchResponse.NotAvailable;
+                }
+            }
+            return Data;
         }
 
         private static void ShowDialogBlur()
@@ -717,6 +800,7 @@ namespace EventTrackerWPF.Librarbies
         [GeneratedRegex(@"^([+-]?\d*\.?\d+)\s*([a-zA-Z]+)?$")]
         private static partial Regex FormattedNum();
     }
+
     public class BrawlFeedLinks
     {
         // W/O Parameters...
@@ -762,9 +846,16 @@ namespace EventTrackerWPF.Librarbies
     public class EventData
     {
         public string EventID { get; set; } = string.Empty;
+        public string EventTitle { get; set; } = string.Empty;
+        public string EventDesc { get; set; } = string.Empty;
+        public string ImgSrc { get; set; } = string.Empty;
         public int HTTPStatusCode { get; set; }
         public FetchResponse FetchStatus { get; set; } = FetchResponse.NotAvailable;
         public double Progress { get; set; } = 0;
+        /// <summary>
+        /// Oh lord they've outplayed us all
+        /// </summary>
+        public double? ProgressInMillions { get; set; } = null;
         public List<EventMilestone> Milestones { get; set; } = [];
     }
 

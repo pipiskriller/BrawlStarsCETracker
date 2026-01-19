@@ -1,6 +1,7 @@
 ﻿using DiscordRPC;
 using EventTrackerWPF.CustomElements;
 using EventTrackerWPF.Librarbies;
+using System;
 using System.Diagnostics;
 using System.Globalization;
 using System.Media;
@@ -56,7 +57,7 @@ namespace EventTrackerWPF
 
         double Siner = 0;
 
-        bool AutofetchedSuccessfully = false;
+        bool FetchedSuccessfully = false;
 
         public EventData? Data = null;
 
@@ -152,6 +153,19 @@ namespace EventTrackerWPF
             else ThemeSelect(Settings.SelectedTheme);
 
             if (SaveSystem.Eggs > 0) BTN_Egg.Visibility = Visibility.Visible;
+
+            if (!string.IsNullOrWhiteSpace(SaveSystem.ImgSrc))
+            {
+                Uri ImgUri = new Uri(BrawlFeedLinks.News + SaveSystem.ImgSrc, UriKind.Absolute);
+                DynCounter_Img.Source = new BitmapImage(ImgUri);
+                EventInfoTab_Icon.Source = new BitmapImage(ImgUri);
+            }
+
+            if (!string.IsNullOrEmpty(SaveSystem.EventTitle))
+                Txt_EventName.Text = SaveSystem.EventTitle;
+
+            if (!string.IsNullOrEmpty(SaveSystem.EventDesc))
+                Txt_EventDesc.Text = SaveSystem.EventDesc;
 
             Count = SaveSystem.SavedEventScore;
             EndGoal = SaveSystem.EndGoal;
@@ -327,17 +341,17 @@ namespace EventTrackerWPF
 
         public async void FetchData()
         {
-            GlobalTextFadeOut.Stop(Txt_Status);
-            
-            Txt_Status.Text = LocalizationLib.Strings["TID_STATUS_FETCHING"];
-            Txt_Status.Fill = Brushes.White;
+            Dispatcher.Invoke(() =>
+            {
+                GlobalTextFadeOut.Stop(Txt_Status);
 
-            // Put async later when using real HTTP requests. This is using mock data for now.
-            await Task.Delay(500);
+                Txt_Status.Text = LocalizationLib.Strings["TID_STATUS_FETCHING"];
+                Txt_Status.Fill = Brushes.White;
+            });
 
             try
             {
-                Data = Common.FetchData();
+                Data = await Common.FetchData();
             }
             catch (Exception EX)
             {
@@ -357,7 +371,7 @@ namespace EventTrackerWPF
                 };
                 Common.CreateAlert(Message);
 
-                Txt_Status.Text = LocalizationLib.Strings["TID_STATUS_FETCHING_FAIL"];
+                Dispatcher.Invoke(() => Txt_Status.Text = LocalizationLib.Strings["TID_STATUS_FETCHING_FAIL"]);
 
                 return;
             }
@@ -365,23 +379,26 @@ namespace EventTrackerWPF
             {
                 if (Data != null && Data.FetchStatus != FetchResponse.NotAvailable)
                 {
-                    GlobalTextFadeOut.Begin(Txt_Status, true);
+                    Dispatcher.Invoke(() =>
+                    {
+                        GlobalTextFadeOut.Begin(Txt_Status, true);
 
-                    GlobalTextFadeOut.Completed += (Do, ne) =>
-                    {
-                        Txt_Status.Text = string.Empty;
-                        Txt_Status.Opacity = 1;
-                    };
+                        GlobalTextFadeOut.Completed += (Do, ne) =>
+                        {
+                            Txt_Status.Text = string.Empty;
+                            Txt_Status.Opacity = 1;
+                        };
 
-                    if (Data.EventID != SaveSystem.CurrentEventID && !string.IsNullOrWhiteSpace(SaveSystem.CurrentEventID))
-                    {
-                        Txt_Status.Fill = Brushes.Orange;
-                        Txt_Status.Text = LocalizationLib.Strings["TID_STATUS_FETCHING_RESET"];
-                    }
-                    else
-                    {
-                        Txt_Status.Text = LocalizationLib.Strings["TID_STATUS_FETCHING_SUCCESS"];
-                    }
+                        if (Data.EventID != SaveSystem.CurrentEventID && !string.IsNullOrWhiteSpace(SaveSystem.CurrentEventID))
+                        {
+                            Txt_Status.Fill = Brushes.Orange;
+                            Txt_Status.Text = LocalizationLib.Strings["TID_STATUS_FETCHING_RESET"];
+                        }
+                        else
+                        {
+                            Txt_Status.Text = LocalizationLib.Strings["TID_STATUS_FETCHING_SUCCESS"];
+                        }
+                    });
 
                     EndGoal = Common.SimpleTextToNumber(Data.Milestones.Last().CountLabel);
                     for (int Idx = 0; Idx < Data.Milestones.Count; Idx++)
@@ -445,12 +462,24 @@ namespace EventTrackerWPF
                         }
                     }
 
-                    Count = Math.Round(Count);
+                    if (Data.ProgressInMillions != null)
+                        Count = Data.ProgressInMillions.GetValueOrDefault() * 1e6;
+                    else Count = Math.Round(Count);
+
+                    if (!string.IsNullOrWhiteSpace(Data.ImgSrc) && Data.ImgSrc != SaveSystem.ImgSrc)
+                    {
+                        SaveSystem.ImgSrc = Data.ImgSrc;
+
+                        Uri ImgUri = new Uri(BrawlFeedLinks.News + Data.ImgSrc, UriKind.Absolute);
+                        DynCounter_Img.Source = new BitmapImage(ImgUri);
+                        EventInfoTab_Icon.Source = new BitmapImage(ImgUri);
+                    }
+
                     RangeAmount = Math.Round(RangeAmount);
 
-                    AutofetchedSuccessfully = Common.LogResult(Count, Data.EventID);
+                    FetchedSuccessfully = Common.LogResult(Count, Data.EventID);
 
-                    if (AutofetchedSuccessfully && SaveSystem.TrackedResults.Count >= 2)
+                    if (FetchedSuccessfully && SaveSystem.TrackedResults.Count >= 2)
                     {
                         SaveSystem.Gems += (long)Math.Round
                             (Count / 1e6 * Random.Shared.NextDouble() *
@@ -458,9 +487,22 @@ namespace EventTrackerWPF
                               SaveSystem.Eggs * 6.66));
                     }
 
+                    if (!string.IsNullOrEmpty(Data.EventTitle) && SaveSystem.EventTitle != Data.EventTitle)
+                    {
+                        SaveSystem.EventTitle = Data.EventTitle;
+                        Txt_EventName.Text = Data.EventTitle;
+                    }
+
+                    if (!string.IsNullOrEmpty(Data.EventDesc) && SaveSystem.EventDesc != Data.EventDesc)
+                    {
+                        SaveSystem.EventDesc = Data.EventDesc;
+                        Txt_EventDesc.Text = Data.EventDesc;
+                    }
+
                     SaveSystem.EndGoal = EndGoal;
                     SaveSystem.SavedEventScore = Count;
                     SaveSystem.ToNextGoal = RangeAmount;
+
 
                     SaveSystem.MilestoneStart = StartCount;
                     SaveSystem.MilestoneEnd = EndCount;
@@ -589,14 +631,14 @@ namespace EventTrackerWPF
             if ((DateTimeOffset.UtcNow.Minute >= 26 && DateTimeOffset.UtcNow.Minute <= 34) ||
                  DateTimeOffset.UtcNow.Minute >= 56 || DateTimeOffset.UtcNow.Minute <= 04)
             {
-                if (!AutofetchedSuccessfully)
+                if (!FetchedSuccessfully)
                 {
                     FetchData();
                 }
             }
             else
             {
-                AutofetchedSuccessfully = false;
+                FetchedSuccessfully = false;
             }
         }
 
@@ -1009,8 +1051,9 @@ namespace EventTrackerWPF
             SoundIndexer.PlaySoundID("btn_click");
             Settings.AutoRefresh = Chk_AutoRefresh.IsChecked;
             BTN_Refresh.IsEnabled = !Chk_AutoRefresh.IsChecked;
+            AutoRefreshTicker.Enabled = Chk_AutoRefresh.IsChecked;
 
-        if (Chk_AutoRefresh.IsChecked)
+            if (Chk_AutoRefresh.IsChecked)
             {
                 var Message = new AlertMessage()
                 {

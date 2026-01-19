@@ -10,6 +10,9 @@ namespace EventTrackerWPF.Librarbies
         public static string CurrentEventID { get; set; } = string.Empty;
         public static Dictionary<long, double> TrackedResults { get; set; } = [];
         public static double SavedEventScore { get; set; } = 0;
+        public static string ImgSrc { get; set; } = string.Empty;
+        public static string EventTitle { get; set; } = string.Empty;
+        public static string EventDesc { get; set; } = string.Empty;
         public static double EndGoal { get; set; } = 1;
         public static double ToNextGoal { get; set; } = 0;
         public static double MilestoneStart { get; set; } = 0;

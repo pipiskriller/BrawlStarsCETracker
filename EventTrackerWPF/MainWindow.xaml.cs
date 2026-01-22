@@ -50,9 +50,7 @@ namespace EventTrackerWPF
         double EndGoal = 1;
 
         double RangeAmount = 0;
-
-        // TODO: make mock data, then make a button that switch through every milestone
-
+ 
         double GemsDisp = 0;
 
         double Siner = 0;
@@ -192,7 +190,8 @@ namespace EventTrackerWPF
                         Common.EventEndDateInUnixTimeSeconds - DateTimeOffset.UtcNow.ToUnixTimeSeconds() : 0
                         )));
 
-            // InitializeRPC();
+            Common.InitializeRPC();
+            UpdateStatusOnRPCIfPossible();
         }
 
         private void PopulateLanguageSelectorView()
@@ -425,10 +424,18 @@ namespace EventTrackerWPF
                             // Since the event has already reached the last milestone, 
                             // we set the count to infinity (endless mode)
                             // but keep the scaling consistent with the previous milestone
+                            double Start_ishCount, StartPercent, EndPercent;
 
-                            double Start_ishCount = Common.SimpleTextToNumber(Data.Milestones[Idx - 1].CountLabel);
-
-                            StartPercent = Data.Milestones[Idx - 1].ProgressPercent;
+                            if (Idx - 1 > 0)
+                            {
+                                Start_ishCount = Common.SimpleTextToNumber(Data.Milestones[Idx - 1].CountLabel);
+                                StartPercent = Data.Milestones[Idx - 1].ProgressPercent;
+                            }
+                            else
+                            {
+                                Start_ishCount = 0;
+                                StartPercent = 0;
+                            }
                             EndPercent = Data.Milestones[Idx].ProgressPercent;
 
                             StartCount = Common.SimpleTextToNumber(Data.Milestones[Idx].CountLabel);
@@ -499,6 +506,8 @@ namespace EventTrackerWPF
                         Txt_EventDesc.Text = Data.EventDesc;
                     }
 
+                    UpdateStatusOnRPCIfPossible();
+
                     SaveSystem.EndGoal = EndGoal;
                     SaveSystem.SavedEventScore = Count;
                     SaveSystem.ToNextGoal = RangeAmount;
@@ -514,6 +523,17 @@ namespace EventTrackerWPF
                     SaveSystem.Save();
                 }
                 else Swoon();
+            }
+        }
+
+        private void UpdateStatusOnRPCIfPossible()
+        {
+            if (Common.DiscordRPCIsInitialized)
+            {
+                Common.SetPresenceMessage(
+                    LocalizationLib.Strings["TID_DISCORD_RPC_GENERIC_LABEL"].Replace("<POINTS>", Common.Beautify(Count, Settings.FormatPref)),
+                    LocalizationLib.Strings["TID_DISCORD_RPC_GENERIC_DESC"].Replace("<PERCENT>", Common.BeautifyPercentage(Count / EndGoal * 100))
+                );
             }
         }
 

@@ -258,6 +258,7 @@ namespace EventTrackerWPF.Librarbies
         public static DateTimeOffset LastUpdatedDate = DateTimeOffset.FromUnixTimeSeconds(LastUpdatedDateInUnixTimeSeconds);
 
         private static readonly DiscordRpcClient DiscordClient = new DiscordRpcClient(DiscordClientID);
+        public static bool DiscordRPCIsInitialized => DiscordClient.IsInitialized;
 
         public static readonly Uri ResourcePath = new("pack://application:,,,/");
 
@@ -778,8 +779,8 @@ namespace EventTrackerWPF.Librarbies
                     DiscordClient.SetPresence(new()
                     {
                         Type = ActivityType.Watching,
-                        Details = "Loading data...",
-                        State = "Waiting...",
+                        Details = LocalizationLib.Strings["TID_DISCORD_RPC_LOADING_DATA"],
+                        State = LocalizationLib.Strings["TID_DISCORD_RPC_LOADING_DATA_WAITING"],
                         Buttons = [new() { Label = "chip", Url = "https://www.youtube.com/watch?v=WIRK_pGdIdA" }]
                     });
                 }
